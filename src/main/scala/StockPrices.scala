@@ -1,5 +1,5 @@
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions.{col, expr, lag, regexp_extract, round, sqrt, stddev, count, var_samp}
+import org.apache.spark.sql.functions.{col, count, desc, expr, lag, regexp_extract, round, sqrt, stddev, var_samp}
 import org.apache.spark.sql.expressions.Window
 
 
@@ -37,27 +37,30 @@ object StockPrices extends App {
     .save(csvPath)
 
   df.createOrReplaceTempView("stock_prices_view")
-  val mostFrequentStock = spark.sql("SELECT ticker, SUM(close * volume)/COUNT(volume) AS frequency " +
+  val mostFrequentStock = spark.sql("SELECT ticker, ROUND((SUM(close * volume)/COUNT(volume))/1000,2) AS frequency_thousands " +
     "FROM stock_prices_view " +
     "GROUP BY ticker " +
-    "ORDER BY frequency DESC " +
+    "ORDER BY frequency_thousands DESC " +
     "LIMIT 1")
 
-  val mostFrequentStockName = mostFrequentStock.select(col("ticker")).first().toString()
+  val mostFrequentStockName = mostFrequentStock.select(col("ticker")).first().toString().stripPrefix("[").stripSuffix("]")
+  val mostFrequentStockFrequency = mostFrequentStock.select(col("frequency_thousands")).first().toString().stripPrefix("[").stripSuffix("]")
 
-  println(s"The stock that was traded most frequently on average was: $mostFrequentStockName")
+  println(s"The stock that was traded most frequently on average was $mostFrequentStockName with frequency of $mostFrequentStockFrequency thousands.")
 
   val dailyReturnStdDF = df
     .select(expr("ticker"), dailyReturn.alias("daily_return"), expr("date"))
     .withColumn("year", regexp_extract(col("date"), "^\\d{4}", 0))
-  dailyReturnStdDF.show()
-
-  dailyReturnStdDF
     .groupBy("ticker", "year")
     .agg((stddev("daily_return") * sqrt(count("daily_return"))).alias("annualized_standard_deviation"))
-    .orderBy("ticker", "year")
-    .show()
+    .orderBy(desc("annualized_standard_deviation"))
+  dailyReturnStdDF.show()
 
+  val mostVolatileStockName = dailyReturnStdDF.select(col("ticker")).first().toString().stripPrefix("[").stripSuffix("]")
+  val mostVolatileStockNameYear = dailyReturnStdDF.select(col("year")).first().toString().stripPrefix("[").stripSuffix("]")
+  val mostVolatileStockNameASD = dailyReturnStdDF.select(col("annualized_standard_deviation")).first().toString().stripPrefix("[").stripSuffix("]")
+
+  println(s"The most volatile stock by annualized standard deviation was $mostVolatileStockName in $mostVolatileStockNameYear with annualized standard deviation of $mostVolatileStockNameASD.")
 
 
 }
