@@ -1,5 +1,5 @@
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions.{col, expr, lag, regexp_extract, round}
+import org.apache.spark.sql.functions.{col, expr, lag, regexp_extract, round, sqrt, stddev, count, var_samp}
 import org.apache.spark.sql.expressions.Window
 
 
@@ -10,13 +10,16 @@ object StockPrices extends App {
   val df = spark.read
     .format("csv")
     .option("inferSchema", "true")
-    .option("header", true)
+    .option("header", "true")
     .load(fPath)
 
-  val windowSpec = Window.orderBy(col("date"))
+  val windowSpec = Window
+    .partitionBy("ticker")
+    .orderBy("date")
 
-  val dailyReturn = round((col("close") - lag("close", 1, 0).over(windowSpec))/lag("close", 1, 0).over(windowSpec),2)
+  val dailyReturn = round((col("close") - lag("close", 1, 0).over(windowSpec))/lag("close", 1, 0).over(windowSpec),6)
   val dailyReturnDF = df.select(expr("date"), dailyReturn.alias("daily_return"))
+  dailyReturnDF.show()
 
   val pPath = "./src/resources/daily_returns.parquet"
   dailyReturnDF
@@ -44,13 +47,16 @@ object StockPrices extends App {
 
   println(s"The stock that was traded most frequently on average was: $mostFrequentStockName")
 
-
-  val dailyReturnStdDF = dailyReturnDF
+  val dailyReturnStdDF = df
+    .select(expr("ticker"), dailyReturn.alias("daily_return"), expr("date"))
     .withColumn("year", regexp_extract(col("date"), "^\\d{4}", 0))
-  dailyReturnStdDF.show(5)
+  dailyReturnStdDF.show()
 
-
-
+  dailyReturnStdDF
+    .groupBy("ticker", "year")
+    .agg((stddev("daily_return") * sqrt(count("daily_return"))).alias("annualized_standard_deviation"))
+    .orderBy("ticker", "year")
+    .show()
 
 
 
