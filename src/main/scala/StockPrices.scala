@@ -1,10 +1,11 @@
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions.{col, count, desc, expr, lag, regexp_extract, round, sqrt, stddev, var_samp}
+import org.apache.spark.sql.functions.{avg, col, count, desc, expr, lag, regexp_extract, round, sqrt, stddev, var_samp}
 import org.apache.spark.sql.expressions.Window
 
 
 object StockPrices extends App {
   val spark = SparkSession.builder().appName("test").master("local").getOrCreate()
+  spark.sparkContext.setLogLevel("ERROR")
 
   val fPath = "./src/resources/stock_prices.csv"
   val df = spark.read
@@ -18,13 +19,17 @@ object StockPrices extends App {
     .orderBy("date")
 
   val dailyReturn = round((col("close") - lag("close", 1, 0).over(windowSpec))/lag("close", 1, 0).over(windowSpec),6)
-  val dailyReturnDF = df.select(expr("date"), dailyReturn.alias("daily_return"))
-  dailyReturnDF.show()
+  val dailyReturnDF = df
+    .select(expr("date"), dailyReturn.alias("daily_return"))
+    .groupBy(col("date"))
+    .agg(avg("daily_return").alias("average_return"))
+    .orderBy(col("date"))
 
   val pPath = "./src/resources/daily_returns.parquet"
   dailyReturnDF
     .write
     .format("parquet")
+    .option("header", "true")
     .mode("overwrite")
     .save(pPath)
 
@@ -33,6 +38,7 @@ object StockPrices extends App {
     .coalesce(1)
     .write
     .format("csv")
+    .option("header", "true")
     .mode("overwrite")
     .save(csvPath)
 
@@ -61,6 +67,4 @@ object StockPrices extends App {
   val mostVolatileStockNameASD = dailyReturnStdDF.select(col("annualized_standard_deviation")).first().toString().stripPrefix("[").stripSuffix("]")
 
   println(s"The most volatile stock by annualized standard deviation was $mostVolatileStockName in $mostVolatileStockNameYear with annualized standard deviation of $mostVolatileStockNameASD.")
-
-
 }
