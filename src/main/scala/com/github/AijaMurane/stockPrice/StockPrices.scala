@@ -15,6 +15,13 @@ object StockPrices extends App {
     .option("header", "true")
     .load(fPath)
 
+  /*
+  Calculating the average daily return of every stock for every date.
+  Output should be:
+  date          average_return
+  yyyy-MM-dd    return of all stocks on that date
+  */
+
   val windowSpec = Window
     .partitionBy("ticker")
     .orderBy("date")
@@ -25,6 +32,10 @@ object StockPrices extends App {
     .groupBy(col("date"))
     .agg(avg("daily_return").alias("average_return"))
     .orderBy(col("date"))
+
+  /*
+  Save the results to the file as Parquet and CSV
+   */
 
   val pPath = "./src/resources/daily_returns.parquet"
   dailyReturnDF
@@ -43,8 +54,12 @@ object StockPrices extends App {
     .mode("overwrite")
     .save(csvPath)
 
+  /*
+  Calculate which stock was traded most frequently - as measured by closing price * volume - on average.
+   */
   df.createOrReplaceTempView("stock_prices_view")
-  val mostFrequentStock = spark.sql("SELECT ticker, ROUND((SUM(close * volume)/COUNT(volume))/1000,2) AS frequency_thousands " +
+  val mostFrequentStock = spark.sql("SELECT ticker, ROUND((SUM(close * volume)/COUNT(volume))/1000,2) " +
+    "AS frequency_thousands " +
     "FROM stock_prices_view " +
     "GROUP BY ticker " +
     "ORDER BY frequency_thousands DESC " +
@@ -55,13 +70,16 @@ object StockPrices extends App {
 
   println(s"The stock that was traded most frequently on average was $mostFrequentStockName with frequency of $mostFrequentStockFrequency thousands.")
 
+  /*
+  Calculate which stock was the most volatile as measured by annualized standard deviation of daily returns.
+   */
+
   val dailyReturnStdDF = df
     .select(expr("ticker"), dailyReturn.alias("daily_return"), expr("date"))
     .withColumn("year", regexp_extract(col("date"), "^\\d{4}", 0))
     .groupBy("ticker", "year")
     .agg((stddev("daily_return") * sqrt(count("daily_return"))).alias("annualized_standard_deviation"))
     .orderBy(desc("annualized_standard_deviation"))
-  dailyReturnStdDF.show()
 
   val mostVolatileStockName = dailyReturnStdDF.select(col("ticker")).first().toString().stripPrefix("[").stripSuffix("]")
   val mostVolatileStockNameYear = dailyReturnStdDF.select(col("year")).first().toString().stripPrefix("[").stripSuffix("]")

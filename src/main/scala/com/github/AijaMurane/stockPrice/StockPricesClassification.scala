@@ -1,3 +1,5 @@
+//FIXME somewhere it is necessary to split the dataframe for each ticker.
+
 package com.github.AijaMurane.stockPrice
 
 import org.apache.spark.ml.classification.LogisticRegression

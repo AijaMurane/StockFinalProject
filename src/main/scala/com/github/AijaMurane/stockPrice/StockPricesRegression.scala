@@ -1,3 +1,9 @@
+/*
+Trying to get a linear regression where date is on x axis and close price on y axis.
+The dates does not work well. Necessary to get an integer instead of date format.
+ */
+
+
 package com.github.AijaMurane.stockPrice
 
 import org.apache.spark.sql.SparkSession
@@ -21,6 +27,8 @@ object StockPricesRegression extends App {
   df.show(false)
   df.printSchema()
 
+
+  //FIXME necessary to calculate date difference between the earliest date and every date. Get an integer for x axis.
   val firstDate = df.select("date").orderBy("date").first().toString().stripPrefix("[").stripSuffix("]")
   println(firstDate)
 
